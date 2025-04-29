@@ -36,6 +36,8 @@ systems - Linux, macOS, BSDs etc. Specifically, Windows is not supported.
 
 `Complete documentation here <https://sh.readthedocs.io/>`_
 
+`Full documentation on a single page for LLM-assisted coding here <https://sh.readthedocs.io/en/latest/fulldoc.html>`_
+
 Installation
 ============
 
