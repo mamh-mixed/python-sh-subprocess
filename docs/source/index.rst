@@ -8,9 +8,9 @@
     sections/contrib
     sections/sudo
 
-    tutorials 
+    tutorials
     sections/faq
-    
+
 .. image:: images/logo-230.png
     :alt: Logo
 
