@@ -1391,10 +1391,10 @@ class Command:
         return fn
 
     def __str__(self):
-        baked_args = " ".join(self._partial_baked_args)
-        if baked_args:
-            baked_args = " " + baked_args
-        return self._path + baked_args
+        if not self._partial_baked_args:
+            return self._path
+        baked_args = " ".join(shlex_quote(arg) for arg in self._partial_baked_args)
+        return f"{self._path} {baked_args}"
 
     def __eq__(self, other):
         return str(self) == str(other)

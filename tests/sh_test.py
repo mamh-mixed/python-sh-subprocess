@@ -855,6 +855,12 @@ print(len(options.long_option.split()))
         num_args = int(python(py.name, "--long-option", "one's two's three's"))
         self.assertEqual(num_args, 3)
 
+        num_args = int(python(py.name, long_option="one's two's three's"))
+        self.assertEqual(num_args, 3)
+
+        cmd = str(python.bake(py.name, long_option="one two three"))
+        self.assertTrue(cmd.endswith(" '--long-option=one two three'"), cmd)
+
     def test_short_bool_option(self):
         py = create_tmp_test(
             """
@@ -2685,6 +2691,26 @@ p.wait()
 
         ll = ls.bake("-l")
         self.assertTrue(str(ll).endswith("/ls -l"))
+
+    def test_baked_command_can_be_printed_with_whitespace_args(self):
+        from sh import ls
+
+        ls_himym = ls.bake("How I Met Your Mother")
+        self.assertTrue(str(ls_himym).endswith("/ls 'How I Met Your Mother'"))
+        ls_himym = ls.bake("How I 'Met' Your Mother")
+        self.assertTrue(
+            str(ls_himym).endswith("""/ls 'How I '"'"'Met'"'"' Your Mother'""")
+        )
+        ls_himym = ls.bake('How I "Met" Your Mother')
+        self.assertTrue(str(ls_himym).endswith("""/ls 'How I "Met" Your Mother'"""))
+
+    def test_baked_command_can_be_printed_with_whitespace_in_options(self):
+        from sh import ls
+
+        cmd = ls.bake(o="one two")
+        self.assertTrue(str(cmd).endswith("""/ls -o 'one two'"""), str(cmd))
+        cmd = ls.bake(opt="one two")
+        self.assertTrue(str(cmd).endswith("""/ls '--opt=one two'"""), str(cmd))
 
     # https://github.com/amoffat/sh/issues/185
     def test_done_callback(self):
