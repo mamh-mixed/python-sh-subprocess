@@ -2306,7 +2306,11 @@ class OProc:
 
             def timeout_fn():
                 self.timed_out = True
-                self.signal(ca["timeout_signal"])
+                try:
+                    self.signal(ca["timeout_signal"])
+                except ProcessLookupError:
+                    # Edge case: the process probably exited
+                    pass
 
             self._timeout_event = None
             self._timeout_timer = None
