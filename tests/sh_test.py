@@ -3012,6 +3012,25 @@ time.sleep(3)
         else:
             self.fail("we should have handled a TimeoutException")
 
+    def test_timeout_race_condition_process_exit(self):
+        import signal
+
+        from sh import TimeoutException
+
+        py = create_tmp_test(
+            """
+import time
+time.sleep(0.05)
+"""
+        )
+        # Run multiple times to increase likelihood of hitting the race condition
+        for _ in range(50):
+            try:
+                python(py.name, _timeout=0.1, _timeout_signal=signal.SIGTERM)
+            except TimeoutException:
+                # TimeoutException is OK, but ProcessLookupError isn't
+                pass
+
     def test_append_stdout(self):
         py = create_tmp_test(
             """
