@@ -87,7 +87,7 @@ _truncate_exc
 
 |def| ``True``
 
-Whether or not exception ouput should be truncated.
+Whether or not exception output should be truncated.
 
 Execution
 =========
@@ -166,8 +166,8 @@ variables are used.
 .. note::
 
     This dictionary is the authoritative environment for the process.  If you
-    wish to change a single variable in your current environement, you must pass
-    a copy of your current environment with the overriden variable to sh.
+    wish to change a single variable in your current environment, you must pass
+    a copy of your current environment with the overridden variable to sh.
 
 .. seealso:: :ref:`environments`
 

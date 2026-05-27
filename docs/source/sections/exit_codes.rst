@@ -18,7 +18,7 @@ return codes through the base class :class:`ErrorReturnCode`:
 .. code-block:: python
 
     try:
-        print(ls("/some/non-existant/folder"))
+        print(ls("/some/non-existent/folder"))
     except ErrorReturnCode_2:
         print("folder doesn't exist!")
         create_the_folder()

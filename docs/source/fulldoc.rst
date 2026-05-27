@@ -1,7 +1,7 @@
 Full Documentation
 ==================
 
-This single page repeats the full documentation for `sh <https://github.com/amoffat/sh/>`, making it easier to put into an LLM's context window. There is nothing on this page that is not mentionned already elsewhere on this site, it's just reorganized as a single page.
+This single page repeats the full documentation for `sh <https://github.com/amoffat/sh/>`, making it easier to put into an LLM's context window. There is nothing on this page that is not mentioned already elsewhere on this site, it's just reorganized as a single page.
 
 .. include:: index.rst
 
@@ -19,7 +19,7 @@ This single page repeats the full documentation for `sh <https://github.com/amof
 .. include:: sections/exit_codes.rst
 .. include:: sections/redirection.rst
 .. include:: sections/asynchronous_execution.rst
-.. also contains reference to example/done.rst so no need to mention it explicitely
+.. also contains reference to example/done.rst so no need to mention it explicitly
 .. .. include:: examples/done.rst
 .. include:: sections/baking.rst
 .. include:: sections/piping.rst
