@@ -855,6 +855,12 @@ print(len(options.long_option.split()))
         num_args = int(python(py.name, "--long-option", "one's two's three's"))
         self.assertEqual(num_args, 3)
 
+        num_args = int(python(py.name, long_option="one's two's three's"))
+        self.assertEqual(num_args, 3)
+
+        cmd = str(python.bake(py.name, long_option="one two three"))
+        self.assertTrue(cmd.endswith(" '--long-option=one two three'"), cmd)
+
     def test_short_bool_option(self):
         py = create_tmp_test(
             """
@@ -2686,6 +2692,26 @@ p.wait()
         ll = ls.bake("-l")
         self.assertTrue(str(ll).endswith("/ls -l"))
 
+    def test_baked_command_can_be_printed_with_whitespace_args(self):
+        from sh import ls
+
+        ls_himym = ls.bake("How I Met Your Mother")
+        self.assertTrue(str(ls_himym).endswith("/ls 'How I Met Your Mother'"))
+        ls_himym = ls.bake("How I 'Met' Your Mother")
+        self.assertTrue(
+            str(ls_himym).endswith("""/ls 'How I '"'"'Met'"'"' Your Mother'""")
+        )
+        ls_himym = ls.bake('How I "Met" Your Mother')
+        self.assertTrue(str(ls_himym).endswith("""/ls 'How I "Met" Your Mother'"""))
+
+    def test_baked_command_can_be_printed_with_whitespace_in_options(self):
+        from sh import ls
+
+        cmd = ls.bake(o="one two")
+        self.assertTrue(str(cmd).endswith("""/ls -o 'one two'"""), str(cmd))
+        cmd = ls.bake(opt="one two")
+        self.assertTrue(str(cmd).endswith("""/ls '--opt=one two'"""), str(cmd))
+
     # https://github.com/amoffat/sh/issues/185
     def test_done_callback(self):
         import time
@@ -2985,6 +3011,25 @@ time.sleep(3)
             self.assertEqual(e.exit_code, signal.SIGHUP)
         else:
             self.fail("we should have handled a TimeoutException")
+
+    def test_timeout_race_condition_process_exit(self):
+        import signal
+
+        from sh import TimeoutException
+
+        py = create_tmp_test(
+            """
+import time
+time.sleep(0.05)
+"""
+        )
+        # Run multiple times to increase likelihood of hitting the race condition
+        for _ in range(50):
+            try:
+                python(py.name, _timeout=0.1, _timeout_signal=signal.SIGTERM)
+            except TimeoutException:
+                # TimeoutException is OK, but ProcessLookupError isn't
+                pass
 
     def test_append_stdout(self):
         py = create_tmp_test(

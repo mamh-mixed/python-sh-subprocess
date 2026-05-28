@@ -8,9 +8,11 @@
     sections/contrib
     sections/sudo
 
-    tutorials 
+    tutorials
     sections/faq
-    
+
+    ref_to_fulldoc
+
 .. image:: images/logo-230.png
     :alt: Logo
 
@@ -156,3 +158,5 @@ Background Processes
     p.wait()
 
 :ref:`Read More <background>`
+
+.. include:: ref_to_fulldoc.rst
