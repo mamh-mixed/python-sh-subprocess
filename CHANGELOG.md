@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.4 - 
+
+- Improvements to str representation of `Command` [#756](https://github.com/amoffat/sh/pull/756)
+- Bugfix where rare `ProcessLookupError` can be thrown [#769](https://github.com/amoffat/sh/pull/769)
+- Various spelling corrections [#774](https://github.com/amoffat/sh/pull/774)
+
 ## 2.2.3 - 6/05/25
 
 - Bugfix where supplemental groups were not dropped when using `_uid`
