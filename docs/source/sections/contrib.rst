@@ -150,7 +150,7 @@ account for this, the contrib version provides a ``bash`` command baked in:
     from sh.contrib import bash
 
     # Calling commands directly
-    bash.ls() # equivallent to "bash -c ls"
+    bash.ls() # equivalent to "bash -c ls"
 
     # Or adding the full commands
     bash("command-with-dashes args")

@@ -627,7 +627,7 @@ print(len(os.listdir("/dev/fd")))
         )
         out = python(py.name, _close_fds=False).strip()
         # pick some number greater than 4, since it's hard to know exactly how many fds
-        # will be open/inherted in the child
+        # will be open/inherited in the child
         self.assertGreater(int(out), 7)
 
         for t in tmp:
@@ -1765,7 +1765,7 @@ for i in range(5):
 """
         )
 
-        # this list will prove that our coroutines are yielding to eachother as each
+        # this list will prove that our coroutines are yielding to each other as each
         # line is produced
         alternating = []
 
