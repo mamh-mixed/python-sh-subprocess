@@ -1382,9 +1382,12 @@ class Command:
 
         call_args, kwargs = self._extract_call_args(kwargs)
 
+        # Copy the existing call args and baked args
         fn._partial_call_args.update(self._partial_call_args)
-        fn._partial_call_args.update(call_args)
         fn._partial_baked_args.extend(self._partial_baked_args)
+
+        fn._partial_call_args.update(call_args)
+
         sep = call_args.get("long_sep", self._call_args["long_sep"])
         prefix = call_args.get("long_prefix", self._call_args["long_prefix"])
         fn._partial_baked_args.extend(compile_args(args, kwargs, sep, prefix))
