@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.3 - 6/05/25
+
+- Bugfix where supplemental groups were not dropped when using `_uid`
+
 ## 2.2.2 - 2/23/25
 
 - Bugfix where it was impossible to use a signal as an `ok_code` [#699](https://github.com/amoffat/sh/issues/699)
