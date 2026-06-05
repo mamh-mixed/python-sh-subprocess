@@ -55,6 +55,12 @@ line-length = 88
 [tool.ruff.lint]
 ignore = ["E203"]
 
+[tool.hatch.build.targets.wheel]
+include = ["sh.py", "sh.pyi", "py.typed"]
+
+[tool.hatch.build.targets.sdist]
+include = ["sh.py", "sh.pyi", "py.typed"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

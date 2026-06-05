@@ -22,6 +22,7 @@ from hashlib import md5
 from io import BytesIO, StringIO
 from os.path import dirname, exists, join, realpath, split
 from pathlib import Path
+from typing import cast
 
 import sh
 
@@ -80,7 +81,7 @@ def append_pythonpath(env, path):
 
 
 def get_module_import_dir(m):
-    mod_file = inspect.getsourcefile(m)
+    mod_file = cast(str, inspect.getsourcefile(m))
     is_package = mod_file.endswith("__init__.py")
 
     mod_dir = dirname(mod_file)
@@ -165,6 +166,20 @@ def create_tmp_test(code, prefix="tmp", delete=True, **kwargs):
     return py
 
 
+def create_stdin_transform_test(transform="upper"):
+    """Creates a temp test that reads all of stdin, applies str.transform(), and
+    writes the result to stdout.  Use this when the test is about *how* data
+    flows through sh (input types, piping, buffering …) rather than about the
+    specific program being run."""
+    return create_tmp_test(
+        """
+import sys
+sys.stdout.write(sys.stdin.read().{transform}())
+sys.stdout.flush()
+""".format(transform=transform)
+    )
+
+
 class BaseTests(unittest.TestCase):
     def setUp(self):
         warnings.simplefilter("ignore", ResourceWarning)
@@ -211,17 +226,19 @@ class FunctionalTests(BaseTests):
         super().tearDown()
 
     def test_print_command(self):
-        from sh import ls, which
-
-        actual_location = which("ls").strip()
-        out = str(ls)
-        self.assertEqual(out, actual_location)
+        py = create_tmp_test("pass")
+        cmd = sh.Command(py.name)
+        self.assertEqual(str(cmd), py.name)
 
     def test_unicode_arg(self):
-        from sh import echo
-
+        py = create_tmp_test(
+            """
+import sys
+sys.stdout.write(sys.argv[1])
+"""
+        )
         test = "漢字"
-        p = echo(test, _encoding="utf8")
+        p = pythons(py.name, test, _encoding="utf8")
         output = p.strip()
         self.assertEqual(test, output)
 
@@ -355,29 +372,32 @@ exit(3)
 
         try:
             python(py.name)
-        except Exception as e:
+        except sh.ErrorReturnCode as e:
             self.assertEqual(e.exit_code, 3)
 
     def test_stdin_from_string(self):
-        from sh import sed
-
+        py = create_tmp_test(
+            r"""
+import sys, re
+_, pattern, repl, _ = sys.argv[1].split("/")
+data = sys.stdin.read()
+sys.stdout.write(re.sub(pattern, repl, data))
+"""
+        )
         self.assertEqual(
-            sed(_in="one test three", e="s/test/two/").strip(), "one two three"
+            pythons(py.name, "s/test/two/", _in="one test three").strip(),
+            "one two three",
         )
 
     def test_ok_code(self):
-        from sh import ErrorReturnCode_1, ErrorReturnCode_2, ls
+        from sh import ErrorReturnCode_2
 
-        exc_to_test = ErrorReturnCode_2
-        code_to_pass = 2
-        if IS_MACOS:
-            exc_to_test = ErrorReturnCode_1
-            code_to_pass = 1
-        self.assertRaises(exc_to_test, ls, "/aofwje/garogjao4a/eoan3on")
+        py = create_tmp_test("import sys; sys.exit(2)")
+        self.assertRaises(ErrorReturnCode_2, python, py.name)
 
-        ls("/aofwje/garogjao4a/eoan3on", _ok_code=code_to_pass)
-        ls("/aofwje/garogjao4a/eoan3on", _ok_code=[code_to_pass])
-        ls("/aofwje/garogjao4a/eoan3on", _ok_code=range(code_to_pass + 1))
+        python(py.name, _ok_code=2)
+        python(py.name, _ok_code=[2])
+        python(py.name, _ok_code=range(3))
 
     def test_ok_code_none(self):
         py = create_tmp_test("exit(0)")
@@ -488,16 +508,14 @@ while True:
         self.assertTrue(all([t > 0.15 for t in derp.times]))
 
     def test_manual_stdin_string(self):
-        from sh import tr
-
-        out = tr("[:lower:]", "[:upper:]", _in="andrew").strip()
+        py = create_stdin_transform_test()
+        out = pythons(py.name, _in="andrew").strip()
         self.assertEqual(out, "ANDREW")
 
     def test_manual_stdin_iterable(self):
-        from sh import tr
-
+        py = create_stdin_transform_test()
         test = ["testing\n", "herp\n", "derp\n"]
-        out = tr("[:lower:]", "[:upper:]", _in=test)
+        out = pythons(py.name, _in=test)
 
         match = "".join([t.upper() for t in test])
         self.assertEqual(out, match)
@@ -505,8 +523,7 @@ while True:
     def test_manual_stdin_file(self):
         import tempfile
 
-        from sh import tr
-
+        py = create_stdin_transform_test()
         test_string = "testing\nherp\nderp\n"
 
         stdin = tempfile.NamedTemporaryFile()
@@ -514,15 +531,14 @@ while True:
         stdin.flush()
         stdin.seek(0)
 
-        out = tr("[:lower:]", "[:upper:]", _in=stdin)
+        out = pythons(py.name, _in=stdin)
 
         self.assertEqual(out, test_string.upper())
 
     def test_manual_stdin_queue(self):
-        from sh import tr
-
+        py = create_stdin_transform_test()
         try:
-            from Queue import Queue
+            from Queue import Queue  # type: ignore[import-not-found]
         except ImportError:
             from queue import Queue
 
@@ -533,7 +549,7 @@ while True:
             q.put(t)
         q.put(None)  # EOF
 
-        out = tr("[:lower:]", "[:upper:]", _in=q)
+        out = pythons(py.name, _in=q)
 
         match = "".join([t.upper() for t in test])
         self.assertEqual(out, match)
@@ -582,11 +598,16 @@ print(dict(HERP=sh.HERP))
 
     def test_which(self):
         # Test 'which' as built-in function
-        from sh import ls
-
         which = sh._SelfWrapper__env.b_which
         self.assertEqual(which("fjoawjefojawe"), None)
-        self.assertEqual(which("ls"), str(ls))
+
+        py = create_tmp_test("pass")
+        test_path = dirname(py.name)
+        _, test_name = os.path.split(py.name)
+        cmd = sh.Command(py.name)
+
+        found_path = which(test_name, [test_path])
+        self.assertEqual(found_path, str(cmd))
 
     def test_which_paths(self):
         # Test 'which' as built-in function
@@ -691,24 +712,28 @@ print(os.listdir("/dev/fd"))
     def test_no_arg(self):
         import pwd
 
-        from sh import whoami
-
-        u1 = whoami().strip()
+        py = create_tmp_test(
+            """
+import os, pwd
+print(pwd.getpwuid(os.geteuid())[0])
+"""
+        )
+        u1 = pythons(py.name).strip()
         u2 = pwd.getpwuid(os.geteuid())[0]
         self.assertEqual(u1, u2)
 
     def test_incompatible_special_args(self):
-        from sh import ls
-
-        self.assertRaises(TypeError, ls, _iter=True, _piped=True)
+        py = create_tmp_test("pass")
+        cmd = sh.Command(py.name)
+        self.assertRaises(TypeError, cmd, _iter=True, _piped=True)
 
     def test_invalid_env(self):
-        from sh import ls
-
+        py = create_tmp_test("pass")
+        cmd = sh.Command(py.name)
         exc = TypeError
-        self.assertRaises(exc, ls, _env="XXX")
-        self.assertRaises(exc, ls, _env={"foo": 123})
-        self.assertRaises(exc, ls, _env={123: "bar"})
+        self.assertRaises(exc, cmd, _env="XXX")
+        self.assertRaises(exc, cmd, _env={"foo": 123})
+        self.assertRaises(exc, cmd, _env={123: "bar"})
 
     def test_exception(self):
         from sh import ErrorReturnCode_2
@@ -763,29 +788,30 @@ exit(2)
     def test_command_not_found(self):
         from sh import CommandNotFound
 
-        def do_import():
+        def do_import1():
             from sh import aowjgoawjoeijaowjellll  # noqa: F401
 
-        self.assertRaises(ImportError, do_import)
+        self.assertRaises(ImportError, do_import1)
 
-        def do_import():
+        def do_import2():
             import sh
 
             sh.awoefaowejfw
 
-        self.assertRaises(CommandNotFound, do_import)
+        self.assertRaises(CommandNotFound, do_import2)
 
-        def do_import():
+        def do_import3():
             import sh
 
             sh.Command("ofajweofjawoe")
 
-        self.assertRaises(CommandNotFound, do_import)
+        self.assertRaises(CommandNotFound, do_import3)
 
     def test_command_wrapper_equivalence(self):
-        from sh import Command, ls, which
-
-        self.assertEqual(Command(str(which("ls")).strip()), ls)
+        py = create_tmp_test("pass")
+        cmd1 = sh.Command(py.name)
+        cmd2 = sh.Command(py.name)
+        self.assertEqual(cmd1, cmd2)
 
     def test_doesnt_execute_directories(self):
         save_path = os.environ["PATH"]
@@ -871,9 +897,9 @@ options, args = parser.parse_args()
 print(options.short_option)
 """
         )
-        self.assertTrue(python(py.name, s=True).strip() == "True")
-        self.assertTrue(python(py.name, s=False).strip() == "False")
-        self.assertTrue(python(py.name).strip() == "False")
+        self.assertTrue(pythons(py.name, s=True).strip() == "True")
+        self.assertTrue(pythons(py.name, s=False).strip() == "False")
+        self.assertTrue(pythons(py.name).strip() == "False")
 
     def test_long_bool_option(self):
         py = create_tmp_test(
@@ -886,8 +912,8 @@ options, args = parser.parse_args()
 print(options.long_option)
 """
         )
-        self.assertTrue(python(py.name, long_option=True).strip() == "True")
-        self.assertTrue(python(py.name).strip() == "False")
+        self.assertTrue(pythons(py.name, long_option=True).strip() == "True")
+        self.assertTrue(pythons(py.name).strip() == "False")
 
     def test_false_bool_ignore(self):
         py = create_tmp_test(
@@ -897,9 +923,9 @@ print(sys.argv[1:])
 """
         )
         test = True
-        self.assertEqual(python(py.name, test and "-n").strip(), "['-n']")
+        self.assertEqual(pythons(py.name, test and "-n").strip(), "['-n']")
         test = False
-        self.assertEqual(python(py.name, test and "-n").strip(), "[]")
+        self.assertEqual(pythons(py.name, test and "-n").strip(), "[]")
 
     def test_composition(self):
         py1 = create_tmp_test(
@@ -916,7 +942,7 @@ print(int(sys.argv[1]) + 1)
         """
         )
 
-        res = python(py2.name, python(py1.name, 8)).strip()
+        res = pythons(py2.name, python(py1.name, 8)).strip()
         self.assertEqual("17", res)
 
     def test_incremental_composition(self):
@@ -934,7 +960,7 @@ print(int(sys.stdin.read()) + 1)
         """
         )
 
-        res = python(py2.name, _in=python(py1.name, 8, _piped=True)).strip()
+        res = pythons(py2.name, _in=python(py1.name, 8, _piped=True)).strip()
         self.assertEqual("17", res)
 
     def test_short_option(self):
@@ -1040,12 +1066,24 @@ print(sys.argv[1])
         self.assertEqual(out, "-baked-long-option")
 
     def test_command_wrapper(self):
-        from sh import Command, which
+        py_ls = create_tmp_test(
+            """
+import sys, os
+for entry in os.listdir(sys.argv[1]):
+    print(entry)
+"""
+        )
+        py_wc = create_tmp_test(
+            """
+import sys
+count = sum(1 for _ in sys.stdin)
+print(count)
+"""
+        )
+        ls = python.bake(py_ls.name)
+        wc = pythons.bake(py_wc.name)
 
-        ls = Command(str(which("ls")).strip())
-        wc = Command(str(which("wc")).strip())
-
-        c1 = int(wc(l=True, _in=ls("-A1", THIS_DIR, _return_cmd=True)))  # noqa: E741
+        c1 = int(wc(_in=ls(THIS_DIR)))
         c2 = len(os.listdir(THIS_DIR))
 
         self.assertEqual(c1, c2)
@@ -1053,11 +1091,15 @@ print(sys.argv[1])
     def test_background(self):
         import time
 
-        from sh import sleep
-
+        py = create_tmp_test(
+            """
+import time, sys
+time.sleep(float(sys.argv[1]))
+"""
+        )
         start = time.time()
         sleep_time = 0.5
-        p = sleep(sleep_time, _bg=True)
+        p = python(py.name, sleep_time, _bg=True)
 
         now = time.time()
         self.assertLess(now - start, sleep_time)
@@ -1074,8 +1116,6 @@ print(sys.argv[1])
     def test_with_context(self):
         import getpass
 
-        from sh import whoami
-
         py = create_tmp_test(
             """
 import sys
@@ -1087,16 +1127,21 @@ subprocess.Popen(sys.argv[1:], shell=False).wait()
 """
         )
 
+        py_whoami = create_tmp_test(
+            """
+import getpass
+print(getpass.getuser())
+"""
+        )
+
         cmd1 = python.bake(py.name, _with=True)
         with cmd1:
-            out = whoami()
+            out = pythons(py_whoami.name)
         self.assertIn("with_context", out)
         self.assertIn(getpass.getuser(), out)
 
     def test_with_context_args(self):
         import getpass
-
-        from sh import whoami
 
         py = create_tmp_test(
             """
@@ -1110,32 +1155,43 @@ parser.add_option("-o", "--opt", action="store_true", default=False, dest="opt")
 options, args = parser.parse_args()
 
 if options.opt:
-    subprocess.Popen(args[0], shell=False).wait()
+    subprocess.Popen(args, shell=False).wait()
 """
         )
+
+        py_whoami = create_tmp_test(
+            """
+import getpass
+print(getpass.getuser())
+"""
+        )
+
         with python(py.name, opt=True, _with=True):
-            out = whoami()
+            out = pythons(py_whoami.name)
         self.assertEqual(getpass.getuser(), out.strip())
 
         with python(py.name, _with=True):
-            out = whoami()
+            out = pythons(py_whoami.name)
         self.assertEqual(out.strip(), "")
 
     def test_with_context_nested(self):
-        echo_path = sh.echo._path
-        with sh.echo.bake("test1", _with=True):
-            with sh.echo.bake("test2", _with=True):
-                out = sh.echo("test3")
-        self.assertEqual(out.strip(), f"test1 {echo_path} test2 {echo_path} test3")
-
-    def test_binary_input(self):
         py = create_tmp_test(
             """
 import sys
-data = sys.stdin.read()
-sys.stdout.write(data)
+print(" ".join(sys.argv[1:]))
 """
         )
+        cmd = python.bake(py.name)
+        with cmd.bake("test1", _with=True):
+            with cmd.bake("test2", _with=True):
+                out = cmd("test3")
+        self.assertEqual(
+            str(out).strip(),
+            f"test1 {sys.executable} {py.name} test2 {sys.executable} {py.name} test3",
+        )
+
+    def test_binary_input(self):
+        py = create_stdin_transform_test()
         data = b"1234"
         out = pythons(py.name, _in=data)
         self.assertEqual(out, "1234")
@@ -1387,21 +1443,18 @@ sys.stdout.write(str(sys.argv[1:]))
         self.assertEqual("['preprocessed', 'arg', '--a-kwarg=123']", out)
 
     def test_bake_args_come_first(self):
-        from sh import ls
+        cmd = python.bake(h=True)
 
-        ls = ls.bake(h=True)
-
-        ran = ls("-la", _return_cmd=True).ran
+        ran = cmd("-la", _return_cmd=True).ran
         ft = ran.index("-h")
         self.assertIn("-la", ran[ft:])
 
     def test_output_equivalence(self):
-        from sh import whoami
+        py = create_tmp_test("""print("hello")""")
+        out1 = pythons(py.name)
+        out2 = pythons(py.name)
 
-        iam1 = whoami()
-        iam2 = whoami()
-
-        self.assertEqual(iam1, iam2)
+        self.assertEqual(out1, out2)
 
     # https://github.com/amoffat/sh/pull/252
     def test_stdout_pipe(self):
@@ -1609,8 +1662,8 @@ for i in range(5):
         import sh
 
         caught_signal = False
+        p = python("-u", py.name, _out=agg, _bg=True)
         try:
-            p = python("-u", py.name, _out=agg, _bg=True)
             p.wait()
         except sh.SignalException_SIGTERM:
             caught_signal = True
@@ -1647,8 +1700,8 @@ for i in range(5):
         import sh
 
         caught_signal = False
+        p = python("-u", py.name, _out=agg, _bg=True)
         try:
-            p = python("-u", py.name, _out=agg, _bg=True)
             p.wait()
         except sh.SignalException_SIGKILL:
             caught_signal = True
@@ -1816,7 +1869,7 @@ sys.exit(0)
         )
 
         async def main():
-            result = await python(py.name, _async=True, _return_cmd=True)
+            result = await python(py.name, _async=True)
             self.assertIsInstance(result, sh.RunningCommand)
             result_str = await python(py.name, _async=True, _return_cmd=False)
             self.assertIsInstance(result_str, str)
@@ -1832,7 +1885,7 @@ sys.exit(1)
         )
 
         async def main():
-            await python(py.name, _async=True, _return_cmd=True)
+            await python(py.name, _async=True)
 
         self.assertRaises(sh.ErrorReturnCode_1, asyncio.run, main())
 
@@ -1872,9 +1925,19 @@ for i in range(42):
         # issue https://github.com/amoffat/sh/issues/224
         test_string = "\xe4\xbd\x95\xe4\xbd\x95\n" * 150  # len > buffer_s
         txt = create_tmp_test(test_string)
-        for line in sh.cat(txt.name, _iter=True):
+        py_cat = create_tmp_test(
+            """
+import sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    sys.stdout.write(f.read())
+"""
+        )
+        had_line = False
+        for line in python(py_cat.name, txt.name, _iter=True):
+            self.assertLess(len(line), 1024)
+            had_line = True
             break
-        self.assertLess(len(line), 1024)
+        self.assertTrue(had_line)
 
     def test_nonblocking_iter(self):
         from errno import EWOULDBLOCK
@@ -2160,10 +2223,14 @@ exit(49)
     def test_cwd(self):
         from os.path import realpath
 
-        from sh import pwd
-
-        self.assertEqual(str(pwd(_cwd="/tmp")), realpath("/tmp") + "\n")
-        self.assertEqual(str(pwd(_cwd="/etc")), realpath("/etc") + "\n")
+        py = create_tmp_test(
+            """
+import os
+print(os.getcwd())
+"""
+        )
+        self.assertEqual(str(python(py.name, _cwd="/tmp")), realpath("/tmp") + "\n")
+        self.assertEqual(str(python(py.name, _cwd="/etc")), realpath("/etc") + "\n")
 
     def test_cwd_fg(self):
         td = realpath(tempfile.mkdtemp())
@@ -2187,16 +2254,10 @@ print(realpath(os.getcwd()))
         os.rmdir(td)
 
     def test_huge_piped_data(self):
-        from sh import tr
-
-        stdin = tempfile.NamedTemporaryFile()
-
+        py_upper = create_stdin_transform_test()
+        py_lower = create_stdin_transform_test("lower")
         data = "herpderp" * 4000 + "\n"
-        stdin.write(data.encode())
-        stdin.flush()
-        stdin.seek(0)
-
-        out = tr("[:upper:]", "[:lower:]", _in=tr("[:lower:]", "[:upper:]", _in=data))
+        out = pythons(py_lower.name, _in=python(py_upper.name, _in=data))
         self.assertTrue(out == data)
 
     def test_tty_input(self):
@@ -2280,22 +2341,20 @@ sys.stdout.write(sys.argv[1])
         self.assertEqual(out.getvalue().decode(), "testing 123")
 
     def test_stringio_input(self):
-        from sh import cat
-
+        py = create_stdin_transform_test()
         input = StringIO()
         input.write("herpderp")
         input.seek(0)
 
-        out = cat(_in=input)
-        self.assertEqual(out, "herpderp")
+        out = pythons(py.name, _in=input)
+        self.assertEqual(out, "HERPDERP")
 
     def test_internal_bufsize(self):
-        from sh import cat
-
-        output = cat(_in="a" * 1000, _internal_bufsize=100, _out_bufsize=0)
+        py = create_stdin_transform_test()
+        output = pythons(py.name, _in="a" * 1000, _internal_bufsize=100, _out_bufsize=0)
         self.assertEqual(len(output), 100)
 
-        output = cat(_in="a" * 1000, _internal_bufsize=50, _out_bufsize=2)
+        output = pythons(py.name, _in="a" * 1000, _internal_bufsize=50, _out_bufsize=2)
         self.assertEqual(len(output), 100)
 
     def test_change_stdout_buffering(self):
@@ -2379,34 +2438,64 @@ sys.stdout.write("line1")
 
         import sh
 
+        py_sleep = create_tmp_test(
+            """
+import time, sys
+time.sleep(float(sys.argv[1]))
+"""
+        )
         sleep_for = 3
         timeout = 1
         started = time()
         try:
-            sh.sleep(sleep_for, _timeout=timeout).wait()
+            python(py_sleep.name, sleep_for, _timeout=timeout).wait()
         except sh.TimeoutException as e:
-            assert "sleep 3" in e.full_cmd
+            assert py_sleep.name in e.full_cmd
         else:
             self.fail("no timeout exception")
         elapsed = time() - started
         self.assertLess(abs(elapsed - timeout), 0.5)
 
     def test_timeout_overstep(self):
+        py_sleep = create_tmp_test(
+            """
+import time, sys
+time.sleep(float(sys.argv[1]))
+"""
+        )
         started = time.time()
-        sh.sleep(1, _timeout=5)
+        python(py_sleep.name, 1, _timeout=5)
         elapsed = time.time() - started
         self.assertLess(abs(elapsed - 1), 0.5)
 
     def test_timeout_wait(self):
-        p = sh.sleep(3, _bg=True)
+        py_sleep = create_tmp_test(
+            """
+import time, sys
+time.sleep(float(sys.argv[1]))
+"""
+        )
+        p = python(py_sleep.name, 3, _bg=True)
         self.assertRaises(sh.TimeoutException, p.wait, timeout=1)
 
     def test_timeout_wait_overstep(self):
-        p = sh.sleep(1, _bg=True)
+        py_sleep = create_tmp_test(
+            """
+import time, sys
+time.sleep(float(sys.argv[1]))
+"""
+        )
+        p = python(py_sleep.name, 1, _bg=True)
         p.wait(timeout=5)
 
     def test_timeout_wait_negative(self):
-        p = sh.sleep(3, _bg=True)
+        py_sleep = create_tmp_test(
+            """
+import time, sys
+time.sleep(float(sys.argv[1]))
+"""
+        )
+        p = python(py_sleep.name, 3, _bg=True)
         self.assertRaises(RuntimeError, p.wait, timeout=-3)
 
     def test_binary_pipe(self):
@@ -2448,13 +2537,18 @@ exit(1)
         )
         self.assertRaises(ErrorReturnCode_1, python, py.name)
 
-    # designed to check if the ErrorReturnCode constructor does not raise
-    # an UnicodeDecodeError
     def test_non_ascii_error(self):
-        from sh import ErrorReturnCode, ls
-
+        # designed to check if the ErrorReturnCode constructor does not raise
+        # an UnicodeDecodeError
+        py = create_tmp_test(
+            """
+import sys
+print(sys.argv[1], file=sys.stderr)
+sys.exit(1)
+"""
+        )
         test = "/á"
-        self.assertRaises(ErrorReturnCode, ls, test, _encoding="utf8")
+        self.assertRaises(sh.ErrorReturnCode, python, py.name, test, _encoding="utf8")
 
     def test_no_out(self):
         py = create_tmp_test(
@@ -2520,21 +2614,21 @@ sys.stderr.write("stderr")
         self.assertFalse(p.process._pipe_queue.empty())
 
     def test_no_pipe(self):
-        from sh import ls
+        py = create_tmp_test("""print("hello")""")
 
         # calling a command regular should fill up the pipe_queue
-        p = ls(_return_cmd=True)
+        p = python(py.name)  # already has _return_cmd=True baked
         self.assertFalse(p.process._pipe_queue.empty())
 
         # calling a command with a callback should not
         def callback(line):
             pass
 
-        p = ls(_out=callback, _return_cmd=True)
+        p = python(py.name, _out=callback)
         self.assertTrue(p.process._pipe_queue.empty())
 
         # calling a command regular with no_pipe also should not
-        p = ls(_no_pipe=True, _return_cmd=True)
+        p = python(py.name, _no_pipe=True)
         self.assertTrue(p.process._pipe_queue.empty())
 
     def test_decode_error_handling(self):
@@ -2648,69 +2742,65 @@ p.wait()
         """test basic pushd functionality"""
         child = realpath(tempfile.mkdtemp())
 
-        old_wd1 = sh.pwd().strip()
-        old_wd2 = os.getcwd()
+        old_wd = os.getcwd()
 
-        self.assertEqual(old_wd1, old_wd2)
-        self.assertNotEqual(old_wd1, child)
+        self.assertNotEqual(old_wd, child)
 
         with sh.pushd(child):
-            new_wd1 = sh.pwd().strip()
-            new_wd2 = os.getcwd()
+            new_wd = os.getcwd()
 
-        old_wd3 = sh.pwd().strip()
-        old_wd4 = os.getcwd()
-        self.assertEqual(old_wd3, old_wd4)
-        self.assertEqual(old_wd1, old_wd3)
+        restored_wd = os.getcwd()
+        self.assertEqual(old_wd, restored_wd)
 
-        self.assertEqual(new_wd1, child)
-        self.assertEqual(new_wd2, child)
+        self.assertEqual(new_wd, child)
 
     def test_pushd_cd(self):
         """test that pushd works like pushd/popd"""
         child = realpath(tempfile.mkdtemp())
         try:
             old_wd = os.getcwd()
-            with sh.pushd(tempdir):
+            with sh.pushd(str(tempdir)):
                 self.assertEqual(str(tempdir), os.getcwd())
             self.assertEqual(old_wd, os.getcwd())
         finally:
             os.rmdir(child)
 
     def test_non_existant_cwd(self):
-        from sh import ls
-
+        py = create_tmp_test("pass")
         # sanity check
         non_exist_dir = join(tempdir, "aowjgoahewro")
         self.assertFalse(exists(non_exist_dir))
-        self.assertRaises(sh.ForkException, ls, _cwd=non_exist_dir)
+        self.assertRaises(sh.ForkException, python, py.name, _cwd=non_exist_dir)
 
     # https://github.com/amoffat/sh/issues/176
     def test_baked_command_can_be_printed(self):
-        from sh import ls
-
-        ll = ls.bake("-l")
-        self.assertTrue(str(ll).endswith("/ls -l"))
+        py = create_tmp_test("pass")
+        cmd = sh.Command(py.name).bake("-l")
+        self.assertTrue(str(cmd).endswith(f"{py.name} -l"))
 
     def test_baked_command_can_be_printed_with_whitespace_args(self):
-        from sh import ls
+        py = create_tmp_test("pass")
+        cmd = sh.Command(py.name)
 
-        ls_himym = ls.bake("How I Met Your Mother")
-        self.assertTrue(str(ls_himym).endswith("/ls 'How I Met Your Mother'"))
-        ls_himym = ls.bake("How I 'Met' Your Mother")
+        baked = cmd.bake("How I Met Your Mother")
+        self.assertTrue(str(baked).endswith(f"{py.name} 'How I Met Your Mother'"))
+        baked = cmd.bake("How I 'Met' Your Mother")
         self.assertTrue(
-            str(ls_himym).endswith("""/ls 'How I '"'"'Met'"'"' Your Mother'""")
+            str(baked).endswith(f"""{py.name} 'How I '"'"'Met'"'"' Your Mother'""")
         )
-        ls_himym = ls.bake('How I "Met" Your Mother')
-        self.assertTrue(str(ls_himym).endswith("""/ls 'How I "Met" Your Mother'"""))
+        baked = cmd.bake('How I "Met" Your Mother')
+        self.assertTrue(str(baked).endswith(f"""{py.name} 'How I "Met" Your Mother'"""))
 
     def test_baked_command_can_be_printed_with_whitespace_in_options(self):
-        from sh import ls
+        py = create_tmp_test("pass")
+        cmd = sh.Command(py.name)
 
-        cmd = ls.bake(o="one two")
-        self.assertTrue(str(cmd).endswith("""/ls -o 'one two'"""), str(cmd))
-        cmd = ls.bake(opt="one two")
-        self.assertTrue(str(cmd).endswith("""/ls '--opt=one two'"""), str(cmd))
+        baked = cmd.bake(o="one two")
+        self.assertTrue(str(baked).endswith(f"{py.name} -o 'one two'"), str(baked))
+        baked = cmd.bake(opt="one two")
+        self.assertTrue(
+            str(baked).endswith(f"""{py.name} '--opt=one two'"""), str(baked)
+        )
 
     # https://github.com/amoffat/sh/issues/185
     def test_done_callback(self):
@@ -3073,19 +3163,19 @@ for i in range(10):
 
         output = []
 
-        def fn(foo, line):
+        def fn1(foo, line):
             output.append((foo, int(line.strip())))
 
-        log_line = partial(fn, "hello")
+        log_line = partial(fn1, "hello")
         python(py.name, _out=log_line)
         self.assertEqual(output, [("hello", i) for i in range(10)])
 
         output = []
 
-        def fn(foo, line, stdin, proc):
+        def fn2(foo, line, stdin, proc):
             output.append((foo, int(line.strip())))
 
-        log_line = partial(fn, "hello")
+        log_line = partial(fn2, "hello")
         python(py.name, _out=log_line)
         self.assertEqual(output, [("hello", i) for i in range(10)])
 
@@ -3343,7 +3433,7 @@ print("cool")
         temp1 = realpath(tempfile.mkdtemp())
         temp2 = realpath(tempfile.mkdtemp())
         try:
-            results = [None, None]
+            results: list[str | None] = [None, None]
 
             def fn1():
                 with sh.pushd(temp1):
@@ -3415,9 +3505,9 @@ print("字")
 
     # https://github.com/amoffat/sh/issues/121
     def test_wraps(self):
-        from sh import ls
-
-        wraps(ls)(lambda f: True)
+        py = create_tmp_test("pass")
+        cmd = sh.Command(py.name)
+        wraps(cmd)(lambda f: True)
 
     def test_signal_exception_aliases(self):
         """proves that signal exceptions with numbers and names are equivalent"""
@@ -3488,16 +3578,16 @@ sys.stdout.write(repr(res))
 
         p1 = python.bake("-u", py.name, 1)
         p2 = python.bake("-u", py.name, 2)
-        results = [None, None]
+        results: list[str | None] = [None, None]
 
         def f1():
             with p1:
                 time.sleep(1)
-                results[0] = str(system_python("one"))
+                results[0] = system_python("one", _return_cmd=False)
 
         def f2():
             with p2:
-                results[1] = str(system_python("two"))
+                results[1] = system_python("two", _return_cmd=False)
 
         t1 = threading.Thread(target=f1)
         t1.start()
@@ -3624,10 +3714,15 @@ sys.stdout.write(sys.argv[1])
         import sh
 
         out = StringIO()
-        from sh import echo
+        py = create_tmp_test(
+            """
+import sys
+sys.stdout.write(sys.argv[1])
+"""
+        )
 
         _sh = sh.bake(_out=out)  # noqa: F841
-        echo("-n", "TEST")
+        sh.python(py.name, "TEST")
         self.assertEqual("", out.getvalue())
 
     def test_set_in_parent_function(self):
@@ -3662,26 +3757,3 @@ sys.stdout.write(sys.argv[1])
         _sh = sh.bake(_ok_code=1)
         self.assertEqual(sh.Command._call_args["ok_code"], 0)
         self.assertEqual(_sh.Command._call_args["ok_code"], 1)
-
-
-if __name__ == "__main__":
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
-    root.addHandler(logging.NullHandler())
-
-    test_kwargs = {"warnings": "ignore"}
-
-    # if we're running a specific test, we can let unittest framework figure out
-    # that test and run it itself.  it will also handle setting the return code
-    # of the process if any tests error or fail
-    if len(sys.argv) > 1:
-        unittest.main(**test_kwargs)
-
-    # otherwise, it looks like we want to run all the tests
-    else:
-        suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
-        test_kwargs["verbosity"] = 2
-        result = unittest.TextTestRunner(**test_kwargs).run(suite)
-
-        if not result.wasSuccessful():
-            exit(1)
