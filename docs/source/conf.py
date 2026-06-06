@@ -2,13 +2,17 @@
 
 from pathlib import Path
 
-import toml
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib  # type: ignore[no-redef]
 
 _THIS_DIR = Path(__file__).parent
 _REPO = _THIS_DIR.parent.parent
 _PYPROJECT = _REPO / "pyproject.toml"
 
-pyproject = toml.load(_PYPROJECT)
+with open(_PYPROJECT, "rb") as _f:
+    pyproject = tomllib.load(_f)
 nitpicky = True
 
 nitpick_ignore = [
@@ -20,7 +24,7 @@ nitpick_ignore_regex = [
     ("py:class", r".*lark.*"),
 ]
 
-version = pyproject["tool"]["poetry"]["version"]
+version = pyproject["project"]["version"]
 release = version
 
 # -- Project information
