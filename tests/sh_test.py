@@ -1425,6 +1425,20 @@ sys.stdout.write(str(sys.argv[1:]))
         out = python.bake(py.name).bake("bake1").bake("bake2")()
         self.assertEqual("['bake1', 'bake2']", str(out))
 
+    def test_bake_kwarg_append(self):
+        """It's more intuitive that command args append, rather than override,
+        since many commands have flags that can be specified several times."""
+        py = create_tmp_test(
+            """
+import sys
+sys.stdout.write(str(sys.argv[1:]))
+"""
+        )
+        orig = pythons.bake(py.name, a="123")
+        self.assertEqual(orig(), "['-a', '123']")
+        override = orig.bake(a="456")
+        self.assertEqual(override(), "['-a', '123', '-a', '456']")
+
     def test_bake_boolean_override(self):
         """Passing a=False in __call__ should override a baked a=True."""
         py = create_tmp_test(
