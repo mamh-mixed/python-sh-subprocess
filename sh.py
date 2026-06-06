@@ -1075,7 +1075,7 @@ def tty_in_validator(passed_kwargs, merged_kwargs):
     for tty_type, std in pairs:
         if tty_type in passed_kwargs and ob_is_tty(passed_kwargs.get(std, None)):
             error = (
-                f"`_{std}` is a TTY already, so so it doesn't make sense to set up a"
+                f"`_{std}` is a TTY already, so it doesn't make sense to set up a"
                 f" TTY with `_{tty_type}`"
             )
             invalid.append(((tty_type, std), error))
