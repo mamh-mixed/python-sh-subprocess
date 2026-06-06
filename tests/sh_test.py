@@ -24,6 +24,8 @@ from os.path import dirname, exists, join, realpath, split
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 import sh
 
 THIS_DIR = Path(__file__).resolve().parent
@@ -120,6 +122,7 @@ def requires_progs(*progs):
 
 
 requires_posix = unittest.skipUnless(os.name == "posix", "Requires POSIX")
+requires_root = unittest.skipUnless(os.getuid() == 0, "Requires root")
 requires_utf8 = unittest.skipUnless(
     sh.DEFAULT_ENCODING == "UTF-8", "System encoding must be UTF-8"
 )
@@ -3389,6 +3392,73 @@ sys.exit(1)
                 )
             else:
                 self.assertEqual(p.exit_code, -sig)
+
+    @requires_posix
+    @requires_root
+    @pytest.mark.root
+    @requires_progs("useradd", "userdel", "groupadd", "groupdel", "id")
+    def test_uid_drops_supplementary_groups(self):
+        """Verify that _uid resets supplementary groups to the target user's
+        own groups via initgroups, not the calling process's groups.
+
+        Regression test for the security issue where a child launched with
+        _uid=<unprivileged> still inherited root's supplementary groups.
+        """
+        import re
+
+        # High IDs to avoid conflicts with real system users/groups.
+        test_uid = 64001
+        test_gid = 64001
+        test_group = "sh_test_grp"
+        test_user = "sh_test_usr"
+
+        group_created = False
+        user_created = False
+        try:
+            sh.groupadd("-g", str(test_gid), test_group)
+            group_created = True
+
+            # -M: no home dir; -g: set primary group to test_group
+            sh.useradd("-u", str(test_uid), "-g", test_group, "-M", test_user)
+            user_created = True
+
+            # Use the `id` utility: it's a world-accessible standard binary
+            # that reports uid and groups without requiring any Python
+            # interpreter or tmp file accessible to the low-privilege user.
+            id_str = str(sh.id(_uid=test_uid)).strip()
+
+            uid_found = int(re.search(r"uid=(\d+)", id_str).group(1))
+            self.assertEqual(uid_found, test_uid)
+
+            gid_found = int(re.search(r"gid=(\d+)", id_str).group(1))
+            self.assertEqual(gid_found, test_gid)
+
+            groups_part = id_str.split("groups=", 1)[1] if "groups=" in id_str else ""
+            child_groups = {int(m) for m in re.findall(r"(\d+)", groups_part)}
+
+            # Child must carry the test user's own group.
+            self.assertIn(
+                test_gid,
+                child_groups,
+                f"Child groups {child_groups} missing expected gid {test_gid}",
+            )
+            # Child must NOT have inherited root's primary group (gid 0).
+            self.assertNotIn(
+                0,
+                child_groups,
+                f"Child inherited root's group 0; groups were {child_groups}",
+            )
+        finally:
+            if user_created:
+                try:
+                    sh.userdel(test_user)
+                except Exception:
+                    pass
+            if group_created:
+                try:
+                    sh.groupdel(test_group)
+                except Exception:
+                    pass
 
 
 class MockTests(BaseTests):
