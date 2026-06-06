@@ -203,15 +203,19 @@ class BaseTests(unittest.TestCase):
 
 class ArgTests(BaseTests):
     def test_list_args(self):
-        processed = sh._aggregate_keywords({"arg": [1, 2, 3]}, "=", "--")
+        processed = sh._aggregate_keywords(
+            kwargs={"arg": [1, 2, 3]}, sep="=", prefix="--"
+        )
         self.assertListEqual(processed, ["--arg=1", "--arg=2", "--arg=3"])
 
     def test_bool_values(self):
-        processed = sh._aggregate_keywords({"truthy": True, "falsey": False}, "=", "--")
+        processed = sh._aggregate_keywords(
+            kwargs={"truthy": True, "falsey": False}, sep="=", prefix="--"
+        )
         self.assertListEqual(processed, ["--truthy"])
 
     def test_space_sep(self):
-        processed = sh._aggregate_keywords({"arg": "123"}, " ", "--")
+        processed = sh._aggregate_keywords(kwargs={"arg": "123"}, sep=" ", prefix="--")
         self.assertListEqual(processed, ["--arg", "123"])
 
 
@@ -1448,21 +1452,26 @@ sys.stdout.write(str(sys.argv[1:]))
 """
         )
 
+        orig = pythons.bake(py.name, a=True)
+
         # short arg: bake True, call with False should drop the flag
-        out = python.bake(py.name, a=True)(a=False)
-        self.assertNotIn("'-a'", str(out))
+        out = orig(a=False)
+        self.assertNotIn("'-a'", out)
+
+        # make sure it leaves the original alone
+        self.assertIn("'-a'", orig())
 
         # short arg: bake False, call with True should add the flag
-        out = python.bake(py.name, a=False)(a=True)
-        self.assertIn("'-a'", str(out))
+        out = pythons.bake(py.name, a=False)(a=True)
+        self.assertIn("'-a'", out)
 
         # long arg: bake True, call with False should drop the flag
-        out = python.bake(py.name, verbose=True)(verbose=False)
-        self.assertNotIn("'--verbose'", str(out))
+        out = pythons.bake(py.name, verbose=True)(verbose=False)
+        self.assertNotIn("'--verbose'", out)
 
         # chained bakes: later bake overrides earlier
-        out = python.bake(py.name).bake(a=True).bake(a=False)()
-        self.assertNotIn("'-a'", str(out))
+        out = pythons.bake(py.name).bake(a=True).bake(a=False)()
+        self.assertNotIn("'-a'", out)
 
     def test_arg_preprocessor(self):
         py = create_tmp_test(

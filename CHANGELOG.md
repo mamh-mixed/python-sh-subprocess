@@ -2,6 +2,8 @@
 
 ## 2.2.4 - 
 
+- Allow boolean arguments to override baked arguments [#770](https://github.com/amoffat/sh/pull/770)
+- Added .pyi typing stub
 - Improvements to str representation of `Command` [#756](https://github.com/amoffat/sh/pull/756)
 - Bugfix where rare `ProcessLookupError` can be thrown [#769](https://github.com/amoffat/sh/pull/769)
 - Various spelling corrections [#774](https://github.com/amoffat/sh/pull/774)
