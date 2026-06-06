@@ -1390,7 +1390,14 @@ class Command:
 
         sep = call_args.get("long_sep", self._call_args["long_sep"])
         prefix = call_args.get("long_prefix", self._call_args["long_prefix"])
-        fn._partial_baked_args.extend(compile_args(args, kwargs, sep, prefix))
+        fn._partial_baked_args.extend(
+            compile_args(
+                args=args,
+                kwargs=kwargs,
+                sep=sep,
+                prefix=prefix,
+            )
+        )
 
         # filter out previously baked args that are overridden with False
         for key, val in kwargs.items():
@@ -1490,7 +1497,10 @@ class Command:
                 stdin = stdin.process._pipe_queue
 
         processed_args = compile_args(
-            args, kwargs, call_args["long_sep"], call_args["long_prefix"]
+            args=args,
+            kwargs=kwargs,
+            sep=call_args["long_sep"],
+            prefix=call_args["long_prefix"],
         )
 
         # filter out baked args that are overridden with False in the call
@@ -1547,7 +1557,7 @@ class Command:
             return rc
 
 
-def compile_args(a, kwargs, sep, prefix):
+def compile_args(*, args, kwargs, sep, prefix):
     """takes args and kwargs, as they were passed into the command instance
     being executed with __call__, and compose them into a flat list that
     will eventually be fed into exec.  example:
@@ -1569,7 +1579,7 @@ def compile_args(a, kwargs, sep, prefix):
     processed_args = []
 
     # aggregate positional args
-    for arg in a:
+    for arg in args:
         if isinstance(arg, (list, tuple)):
             if isinstance(arg, GlobResults) and not arg:
                 arg = [arg.path]
