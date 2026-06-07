@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.2.5 - 
+## 2.2.5 - 6/6/25
 
 - Single page doc for LLM context window [#757](https://github.com/amoffat/sh/pull/757)
 - Formal support for Python 3.13 and 3.14
