@@ -13,6 +13,7 @@ This single page repeats the full documentation for `sh <https://github.com/amof
 .. include:: sections/faq.rst
 .. include:: sections/contrib.rst
 .. include:: sections/sudo.rst
+.. include:: sections/migration
 
 .. content of usage.rst
 .. include:: sections/passing_arguments.rst
