@@ -87,7 +87,7 @@ _truncate_exc
 
 |def| ``True``
 
-Whether or not exception ouput should be truncated.
+Whether or not exception output should be truncated.
 
 Execution
 =========
@@ -166,8 +166,8 @@ variables are used.
 .. note::
 
     This dictionary is the authoritative environment for the process.  If you
-    wish to change a single variable in your current environement, you must pass
-    a copy of your current environment with the overriden variable to sh.
+    wish to change a single variable in your current environment, you must pass
+    a copy of your current environment with the overridden variable to sh.
 
 .. seealso:: :ref:`environments`
 
@@ -240,14 +240,13 @@ Determines if our forked process will be executed in its own session via
     because it makes more sense for a launched process to default to being in
     the process group of python script, so that it receives SIGINTs correctly.
 
-.. note::
-
-    If ``_new_session`` is ``False``, the forked process will be put into its
-    own group via ``os.setpgrp()``.  This way, the forked process, and all of
-    it's children, are always alone in their own group that may be signalled
-    directly, regardless of the value of ``_new_session``.
-
 .. seealso:: :ref:`architecture`
+
+_new_group
+----------
+|def| ``False``
+
+Determines if our forked process will be executed in its own group via :func:`os.setpgid`
 
 .. _uid:
 

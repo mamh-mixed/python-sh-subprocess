@@ -2,10 +2,6 @@
     :target: https://amoffat.github.com/sh
     :alt: Logo
 
-**If you are migrating from 1.* to 2.*, please see MIGRATION.md**
-
-|
-
 .. image:: https://img.shields.io/pypi/v/sh.svg?style=flat-square
     :target: https://pypi.python.org/pypi/sh
     :alt: Version
@@ -21,13 +17,13 @@
 
 |
 
-sh is a full-fledged subprocess replacement for Python 3.8 - 3.12, and PyPy
+sh is a full-fledged subprocess replacement for Python 3.8 - 3.14, and PyPy
 that allows you to call *any* program as if it were a function:
 
 .. code:: python
 
-    from sh import ifconfig
-    print(ifconfig("eth0"))
+    from sh import git
+    print(git("status", "--short"))
 
 sh is *not* a collection of system commands implemented in Python.
 
@@ -35,6 +31,8 @@ sh relies on various Unix system calls and only works on Unix-like operating
 systems - Linux, macOS, BSDs etc. Specifically, Windows is not supported.
 
 `Complete documentation here <https://sh.readthedocs.io/>`_
+
+`Full documentation on a single page for LLM-assisted coding here <https://sh.readthedocs.io/en/latest/fulldoc.html>`_
 
 Installation
 ============

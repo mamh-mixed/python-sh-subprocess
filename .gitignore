@@ -9,3 +9,5 @@ __pycache__/
 /docs/build
 /TODO.md
 /htmlcov/
+.mypy_cache
+/.python-version
