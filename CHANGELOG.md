@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.6 - 6/7/25
+
+- Include missing sdist files [#778](https://github.com/amoffat/sh/issues/778)
+
 ## 2.2.5 - 6/6/25
 
 - Single page doc for LLM context window [#757](https://github.com/amoffat/sh/pull/757)
